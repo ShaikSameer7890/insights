@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "AI Creator Marketplace"
+version = "1.0.0"
+id = "artifacts/creator-marketplace"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18954
+
+[services.development]
+run = "pnpm --filter @workspace/creator-marketplace run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/creator-marketplace", "run", "build" ]
+publicDir = "artifacts/creator-marketplace/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18954"
+BASE_PATH = "/"

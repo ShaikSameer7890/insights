@@ -3,20 +3,34 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: AI Creator Marketplace API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: creators
+    description: Creator operations
+  - name: brands
+    description: Brand operations
+  - name: campaigns
+    description: Campaign operations
+  - name: applications
+    description: Campaign application operations
+  - name: analytics
+    description: Analytics operations
+  - name: messages
+    description: Messaging operations
+  - name: payments
+    description: Payment operations
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +38,468 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /creators:
+    get:
+      operationId: listCreators
+      tags: [creators]
+      summary: List all creators
+      parameters:
+        - in: query
+          name: category
+          schema:
+            type: string
+        - in: query
+          name: platform
+          schema:
+            type: string
+        - in: query
+          name: minFollowers
+          schema:
+            type: number
+        - in: query
+          name: maxFollowers
+          schema:
+            type: number
+        - in: query
+          name: search
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of creators
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Creator"
+    post:
+      operationId: createCreator
+      tags: [creators]
+      summary: Create a creator profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCreatorBody"
+      responses:
+        "201":
+          description: Creator created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Creator"
+
+  /creators/{id}:
+    get:
+      operationId: getCreator
+      tags: [creators]
+      summary: Get a creator by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Creator details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Creator"
+        "404":
+          description: Not found
+    put:
+      operationId: updateCreator
+      tags: [creators]
+      summary: Update a creator profile
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCreatorBody"
+      responses:
+        "200":
+          description: Creator updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Creator"
+
+  /creators/top:
+    get:
+      operationId: getTopCreators
+      tags: [creators]
+      summary: Get top AI-ranked creators
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+        - in: query
+          name: category
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Top ranked creators
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CreatorWithScore"
+
+  /campaigns:
+    get:
+      operationId: listCampaigns
+      tags: [campaigns]
+      summary: List all campaigns
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [draft, active, completed, cancelled]
+        - in: query
+          name: category
+          schema:
+            type: string
+        - in: query
+          name: brandId
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of campaigns
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Campaign"
+    post:
+      operationId: createCampaign
+      tags: [campaigns]
+      summary: Create a campaign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCampaignBody"
+      responses:
+        "201":
+          description: Campaign created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+
+  /campaigns/{id}:
+    get:
+      operationId: getCampaign
+      tags: [campaigns]
+      summary: Get campaign by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Campaign details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+    put:
+      operationId: updateCampaign
+      tags: [campaigns]
+      summary: Update a campaign
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCampaignBody"
+      responses:
+        "200":
+          description: Campaign updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+
+  /campaigns/{id}/recommend:
+    get:
+      operationId: getRecommendedCreators
+      tags: [campaigns]
+      summary: AI recommended creators for a campaign
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Recommended creators
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CreatorWithScore"
+
+  /applications:
+    get:
+      operationId: listApplications
+      tags: [applications]
+      summary: List campaign applications
+      parameters:
+        - in: query
+          name: campaignId
+          schema:
+            type: integer
+        - in: query
+          name: creatorId
+          schema:
+            type: integer
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [pending, accepted, rejected]
+      responses:
+        "200":
+          description: List of applications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Application"
+    post:
+      operationId: createApplication
+      tags: [applications]
+      summary: Apply to a campaign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateApplicationBody"
+      responses:
+        "201":
+          description: Application submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+
+  /applications/{id}:
+    put:
+      operationId: updateApplication
+      tags: [applications]
+      summary: Update application status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateApplicationBody"
+      responses:
+        "200":
+          description: Application updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+
+  /analytics/dashboard:
+    get:
+      operationId: getDashboardStats
+      tags: [analytics]
+      summary: Get dashboard summary statistics
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /analytics/creator/{id}:
+    get:
+      operationId: getCreatorAnalytics
+      tags: [analytics]
+      summary: Get analytics for a creator
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Creator analytics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatorAnalytics"
+
+  /analytics/categories:
+    get:
+      operationId: getCategoryBreakdown
+      tags: [analytics]
+      summary: Get creator count by category
+      responses:
+        "200":
+          description: Category breakdown
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CategoryCount"
+
+  /messages:
+    get:
+      operationId: listMessages
+      tags: [messages]
+      summary: List messages in a conversation
+      parameters:
+        - in: query
+          name: conversationId
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+    post:
+      operationId: sendMessage
+      tags: [messages]
+      summary: Send a message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageBody"
+      responses:
+        "201":
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+
+  /conversations:
+    get:
+      operationId: listConversations
+      tags: [messages]
+      summary: List conversations
+      responses:
+        "200":
+          description: Conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Conversation"
+    post:
+      operationId: createConversation
+      tags: [messages]
+      summary: Start a conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConversationBody"
+      responses:
+        "201":
+          description: Conversation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+
+  /payments:
+    get:
+      operationId: listPayments
+      tags: [payments]
+      summary: List payments
+      parameters:
+        - in: query
+          name: campaignId
+          schema:
+            type: integer
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [pending, escrow, released, refunded]
+      responses:
+        "200":
+          description: Payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Payment"
+    post:
+      operationId: createPayment
+      tags: [payments]
+      summary: Create a payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePaymentBody"
+      responses:
+        "201":
+          description: Payment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +510,464 @@ components:
       required:
         - status
 
+    Creator:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+        bio:
+          type: string
+        category:
+          type: string
+        platform:
+          type: string
+        followers:
+          type: integer
+        engagementRate:
+          type: number
+        location:
+          type: string
+        avatarUrl:
+          type: string
+        portfolioUrl:
+          type: string
+        totalEarnings:
+          type: number
+        campaignsCompleted:
+          type: integer
+        rating:
+          type: number
+        isVerified:
+          type: boolean
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - username
+        - email
+        - category
+        - platform
+        - followers
+        - engagementRate
+        - location
+        - createdAt
+
+    CreateCreatorBody:
+      type: object
+      properties:
+        name:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+        bio:
+          type: string
+        category:
+          type: string
+        platform:
+          type: string
+        followers:
+          type: integer
+        engagementRate:
+          type: number
+        location:
+          type: string
+        avatarUrl:
+          type: string
+        portfolioUrl:
+          type: string
+      required:
+        - name
+        - username
+        - email
+        - category
+        - platform
+        - followers
+        - engagementRate
+        - location
+
+    CreatorWithScore:
+      allOf:
+        - $ref: "#/components/schemas/Creator"
+        - type: object
+          properties:
+            aiScore:
+              type: number
+            matchReason:
+              type: string
+          required:
+            - aiScore
+
+    Campaign:
+      type: object
+      properties:
+        id:
+          type: integer
+        brandId:
+          type: integer
+        brandName:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        budget:
+          type: number
+        status:
+          type: string
+          enum: [draft, active, completed, cancelled]
+        requiredFollowers:
+          type: integer
+        requiredEngagement:
+          type: number
+        platforms:
+          type: array
+          items:
+            type: string
+        deadline:
+          type: string
+        deliverables:
+          type: string
+        applicationsCount:
+          type: integer
+        createdAt:
+          type: string
+      required:
+        - id
+        - brandId
+        - title
+        - description
+        - category
+        - budget
+        - status
+        - createdAt
+
+    CreateCampaignBody:
+      type: object
+      properties:
+        brandId:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        budget:
+          type: number
+        requiredFollowers:
+          type: integer
+        requiredEngagement:
+          type: number
+        platforms:
+          type: array
+          items:
+            type: string
+        deadline:
+          type: string
+        deliverables:
+          type: string
+      required:
+        - brandId
+        - title
+        - description
+        - category
+        - budget
+
+    Application:
+      type: object
+      properties:
+        id:
+          type: integer
+        campaignId:
+          type: integer
+        creatorId:
+          type: integer
+        creatorName:
+          type: string
+        creatorAvatarUrl:
+          type: string
+        campaignTitle:
+          type: string
+        status:
+          type: string
+          enum: [pending, accepted, rejected]
+        pitch:
+          type: string
+        proposedRate:
+          type: number
+        createdAt:
+          type: string
+      required:
+        - id
+        - campaignId
+        - creatorId
+        - status
+        - createdAt
+
+    CreateApplicationBody:
+      type: object
+      properties:
+        campaignId:
+          type: integer
+        creatorId:
+          type: integer
+        pitch:
+          type: string
+        proposedRate:
+          type: number
+      required:
+        - campaignId
+        - creatorId
+
+    UpdateApplicationBody:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [pending, accepted, rejected]
+      required:
+        - status
+
+    DashboardStats:
+      type: object
+      properties:
+        totalCreators:
+          type: integer
+        totalCampaigns:
+          type: integer
+        activeCampaigns:
+          type: integer
+        totalPaymentsVolume:
+          type: number
+        avgEngagementRate:
+          type: number
+        topCategories:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoryCount"
+        recentActivity:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityItem"
+      required:
+        - totalCreators
+        - totalCampaigns
+        - activeCampaigns
+        - totalPaymentsVolume
+        - avgEngagementRate
+        - topCategories
+        - recentActivity
+
+    CreatorAnalytics:
+      type: object
+      properties:
+        creatorId:
+          type: integer
+        followerGrowth:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataPoint"
+        earningsByMonth:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataPoint"
+        campaignPerformance:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataPoint"
+        totalReach:
+          type: integer
+        avgEarningsPerCampaign:
+          type: number
+      required:
+        - creatorId
+        - followerGrowth
+        - earningsByMonth
+        - campaignPerformance
+        - totalReach
+        - avgEarningsPerCampaign
+
+    CategoryCount:
+      type: object
+      properties:
+        category:
+          type: string
+        count:
+          type: integer
+        percentage:
+          type: number
+      required:
+        - category
+        - count
+        - percentage
+
+    DataPoint:
+      type: object
+      properties:
+        label:
+          type: string
+        value:
+          type: number
+      required:
+        - label
+        - value
+
+    ActivityItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+        description:
+          type: string
+        timestamp:
+          type: string
+      required:
+        - id
+        - type
+        - description
+        - timestamp
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: integer
+        conversationId:
+          type: integer
+        senderId:
+          type: integer
+        senderName:
+          type: string
+        senderAvatar:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - conversationId
+        - senderId
+        - senderName
+        - content
+        - createdAt
+
+    SendMessageBody:
+      type: object
+      properties:
+        conversationId:
+          type: integer
+        senderId:
+          type: integer
+        content:
+          type: string
+      required:
+        - conversationId
+        - senderId
+        - content
+
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: integer
+        participantIds:
+          type: array
+          items:
+            type: integer
+        participantNames:
+          type: array
+          items:
+            type: string
+        lastMessage:
+          type: string
+        lastMessageAt:
+          type: string
+        unreadCount:
+          type: integer
+        campaignId:
+          type: integer
+        campaignTitle:
+          type: string
+      required:
+        - id
+        - participantIds
+        - participantNames
+        - unreadCount
+
+    CreateConversationBody:
+      type: object
+      properties:
+        participantIds:
+          type: array
+          items:
+            type: integer
+        campaignId:
+          type: integer
+      required:
+        - participantIds
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: integer
+        campaignId:
+          type: integer
+        campaignTitle:
+          type: string
+        brandId:
+          type: integer
+        creatorId:
+          type: integer
+        creatorName:
+          type: string
+        amount:
+          type: number
+        status:
+          type: string
+          enum: [pending, escrow, released, refunded]
+        platformFee:
+          type: number
+        creatorPayout:
+          type: number
+        createdAt:
+          type: string
+      required:
+        - id
+        - campaignId
+        - brandId
+        - creatorId
+        - amount
+        - status
+        - createdAt
+
+    CreatePaymentBody:
+      type: object
+      properties:
+        campaignId:
+          type: integer
+        brandId:
+          type: integer
+        creatorId:
+          type: integer
+        amount:
+          type: number
+      required:
+        - campaignId
+        - brandId
+        - creatorId
+        - amount
