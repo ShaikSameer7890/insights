@@ -1,8 +1,8 @@
-# AI Creator Marketplace
+# Marketplace — AI Creator Platform
 
 ## Overview
 
-A professional, startup-grade AI-powered marketplace platform that connects brands with content creators/influencers. Features gradient green UI, AI recommendation engine, real-time data, and full PostgreSQL integration.
+A professional SaaS platform connecting Indian brands with content creators via an AI recommendation engine. Features a deep dark slate + amber/gold theme, Indian Rupee (INR) currency, interactive 3D analytics charts, real-time messaging, escrow payments, and full account/settings management.
 
 ## Stack
 
@@ -16,7 +16,7 @@ A professional, startup-grade AI-powered marketplace platform that connects bran
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
-- **Charts**: Recharts
+- **Charts**: Recharts + Three.js (@react-three/fiber, @react-three/drei)
 - **Animations**: Framer Motion
 
 ## Features
@@ -27,7 +27,13 @@ A professional, startup-grade AI-powered marketplace platform that connects bran
 - Real-time messaging (conversations + messages)
 - Payment system with escrow flow (pending → escrow → released)
 - Platform analytics dashboard (stats, category breakdown, activity feed)
-- Gradient green UI theme (emerald-to-teal with glass-morphism cards)
+- Dark professional theme: deep slate (222 26% 8%) + amber/gold primary, no gradients
+- INR currency throughout (₹, Lakhs, Crores)
+- Transparent backdrop-blur navbar + landscape-responsive layout
+- Interactive 3D bar charts in Analytics (with WebGL fallback to 2D)
+- Settings page: Profile, Notifications, Security, Billing, Activity Log tabs
+- Real-time message polling (5s interval) with unread badges and online status
+- "Marketplace" branding throughout (replaced "CreatorMatch")
 
 ## Key Commands
 
