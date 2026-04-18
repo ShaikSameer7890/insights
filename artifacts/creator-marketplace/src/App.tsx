@@ -4,7 +4,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 
-// Pages
 import Dashboard from "./pages/Dashboard";
 import Creators from "./pages/Creators";
 import CreatorProfile from "./pages/CreatorProfile";
@@ -14,8 +13,16 @@ import CampaignDetail from "./pages/CampaignDetail";
 import Messages from "./pages/Messages";
 import Payments from "./pages/Payments";
 import Analytics from "./pages/Analytics";
+import Settings from "./pages/Settings";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchInterval: 30000,
+      staleTime: 10000,
+    },
+  },
+});
 
 function Router() {
   return (
@@ -29,6 +36,7 @@ function Router() {
       <Route path="/messages" component={Messages} />
       <Route path="/payments" component={Payments} />
       <Route path="/analytics" component={Analytics} />
+      <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>
   );

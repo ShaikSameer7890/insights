@@ -5,17 +5,26 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Send, MessageSquare } from "lucide-react";
-import { format } from "date-fns";
+import { Search, Send, MessageSquare, Circle, Paperclip, MoreVertical } from "lucide-react";
+import { format, isToday, isYesterday } from "date-fns";
+import { motion, AnimatePresence } from "framer-motion";
+import { Badge } from "@/components/ui/badge";
+
+function formatMsgTime(dateStr: string) {
+  const d = new Date(dateStr);
+  if (isToday(d)) return format(d, "h:mm a");
+  if (isYesterday(d)) return "Yesterday";
+  return format(d, "MMM d");
+}
 
 export default function Messages() {
   const [activeConvId, setActiveConvId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
+  const [searchQ, setSearchQ] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { data: conversations, isLoading: convsLoading } = useListConversations();
-  
-  // Set initial active conversation
+  const { data: conversations, isLoading: convsLoading, refetch: refetchConvs } = useListConversations();
+
   useEffect(() => {
     if (conversations?.length && !activeConvId) {
       setActiveConvId(conversations[0].id);
@@ -29,170 +38,205 @@ export default function Messages() {
 
   const sendMessage = useSendMessage();
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Poll messages every 5 seconds
+  useEffect(() => {
+    if (!activeConvId) return;
+    const t = setInterval(() => refetch(), 5000);
+    return () => clearInterval(t);
+  }, [activeConvId, refetch]);
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim() || !activeConvId) return;
-
     sendMessage.mutate(
-      {
-        data: {
-          conversationId: activeConvId,
-          senderId: 1, // Mock current user ID
-          content: message
-        }
-      },
-      {
-        onSuccess: () => {
-          setMessage("");
-          refetch();
-        }
-      }
+      { data: { conversationId: activeConvId, senderId: 1, content: message } },
+      { onSuccess: () => { setMessage(""); refetch(); refetchConvs(); } }
     );
   };
+
+  const filteredConvs = conversations?.filter(c =>
+    !searchQ || c.participantNames.some(n => n.toLowerCase().includes(searchQ.toLowerCase()))
+    || c.campaignTitle?.toLowerCase().includes(searchQ.toLowerCase())
+  );
 
   const activeConv = conversations?.find(c => c.id === activeConvId);
 
   return (
     <AppLayout>
-      <div className="flex flex-col h-[calc(100vh-6rem)]">
-        <div className="mb-4">
-          <h1 className="text-3xl font-bold tracking-tight">Messages</h1>
-          <p className="text-muted-foreground mt-1">Communicate with creators and manage campaign logistics.</p>
+      <div className="flex flex-col h-[calc(100vh-7rem)]">
+        <div className="mb-4 shrink-0">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Messages</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Direct communication with creators and brands.</p>
         </div>
 
-        <Card className="flex-1 flex overflow-hidden border-emerald-500/20 bg-white/60 backdrop-blur shadow-sm">
-          {/* Sidebar */}
-          <div className="w-full md:w-80 border-r border-emerald-100 flex flex-col bg-white/40">
-            <div className="p-4 border-b border-emerald-100">
+        <Card className="flex-1 flex overflow-hidden bg-card border-border/60 min-h-0">
+          {/* Conversation list */}
+          <div className="w-full lg:w-72 xl:w-80 border-r border-border/60 flex flex-col shrink-0">
+            <div className="p-3 border-b border-border/60">
               <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Search messages..." className="pl-9 bg-white border-emerald-200" />
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search conversations..."
+                  className="pl-8 h-8 text-sm bg-muted/50 border-border/60"
+                  value={searchQ}
+                  onChange={e => setSearchQ(e.target.value)}
+                />
               </div>
             </div>
-            
+
             <div className="flex-1 overflow-y-auto">
               {convsLoading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="p-4 border-b border-emerald-50 flex items-center gap-3">
-                    <Skeleton className="h-10 w-10 rounded-full" />
-                    <div className="flex-1 space-y-2">
-                      <Skeleton className="h-4 w-24" />
-                      <Skeleton className="h-3 w-full" />
+                <div className="p-3 space-y-3">
+                  {[0,1,2,3].map(i => (
+                    <div key={i} className="flex items-center gap-3">
+                      <Skeleton className="h-10 w-10 rounded-full shrink-0" />
+                      <div className="flex-1 space-y-1.5">
+                        <Skeleton className="h-3.5 w-24" />
+                        <Skeleton className="h-3 w-full" />
+                      </div>
                     </div>
-                  </div>
-                ))
-              ) : conversations?.length === 0 ? (
+                  ))}
+                </div>
+              ) : filteredConvs?.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground">
-                  <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                  <p>No conversations yet</p>
+                  <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No conversations yet</p>
                 </div>
               ) : (
-                conversations?.map((conv) => {
-                  const otherParticipant = conv.participantNames[1] || conv.participantNames[0];
+                filteredConvs?.map(conv => {
+                  const other = conv.participantNames[1] || conv.participantNames[0] || "Unknown";
                   return (
-                    <div 
+                    <button
                       key={conv.id}
                       onClick={() => setActiveConvId(conv.id)}
-                      className={`p-4 border-b border-emerald-50 cursor-pointer transition-colors hover:bg-emerald-50 flex items-start gap-3
-                        ${activeConvId === conv.id ? 'bg-emerald-100/50 border-l-4 border-l-emerald-500' : ''}
+                      className={`w-full text-left p-3 border-b border-border/40 transition-colors hover:bg-accent/60 flex items-start gap-3
+                        ${activeConvId === conv.id ? "bg-accent/80 border-l-2 border-l-primary" : ""}
                       `}
                     >
-                      <div className="w-10 h-10 rounded-full bg-emerald-200 flex-shrink-0 flex items-center justify-center text-emerald-800 font-bold">
-                        {otherParticipant.charAt(0)}
+                      <div className="w-9 h-9 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary text-sm font-bold shrink-0">
+                        {other.charAt(0)}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-baseline mb-1">
-                          <h4 className="font-semibold text-sm truncate">{otherParticipant}</h4>
+                        <div className="flex justify-between items-baseline mb-0.5">
+                          <span className="text-sm font-semibold text-foreground truncate">{other}</span>
                           <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2">
-                            {conv.lastMessageAt ? format(new Date(conv.lastMessageAt), 'MMM d') : ''}
+                            {conv.lastMessageAt ? formatMsgTime(conv.lastMessageAt as string) : ""}
                           </span>
                         </div>
-                        <p className="text-xs text-muted-foreground truncate">{conv.lastMessage || 'Start a conversation'}</p>
+                        <p className="text-xs text-muted-foreground truncate">{conv.lastMessage || "Start a conversation"}</p>
                         {conv.campaignTitle && (
-                          <div className="text-[10px] text-emerald-600 mt-1 bg-emerald-50 inline-block px-1.5 rounded truncate max-w-full">
+                          <Badge variant="outline" className="mt-1 text-[10px] h-4 border-border/60 text-muted-foreground truncate max-w-full">
                             {conv.campaignTitle}
-                          </div>
+                          </Badge>
                         )}
                       </div>
-                    </div>
+                      {conv.unreadCount > 0 && (
+                        <span className="w-4 h-4 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center shrink-0">
+                          {conv.unreadCount}
+                        </span>
+                      )}
+                    </button>
                   );
                 })
               )}
             </div>
           </div>
 
-          {/* Main Chat Area */}
-          <div className="hidden md:flex flex-col flex-1 bg-white/20">
+          {/* Chat area */}
+          <div className="hidden lg:flex flex-col flex-1 min-w-0">
             {activeConvId ? (
               <>
-                <div className="h-16 border-b border-emerald-100 flex items-center px-6 bg-white/50">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-emerald-200 flex items-center justify-center text-emerald-800 font-bold">
-                      {(activeConv?.participantNames[1] || 'C').charAt(0)}
+                {/* Chat header */}
+                <div className="h-14 border-b border-border/60 flex items-center px-4 bg-card/50 backdrop-blur-sm shrink-0">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary text-xs font-bold">
+                      {(activeConv?.participantNames[1] || "C").charAt(0)}
                     </div>
-                    <div>
-                      <h3 className="font-bold text-foreground">{activeConv?.participantNames[1] || 'Creator'}</h3>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-foreground">{activeConv?.participantNames[1] || "Creator"}</span>
+                        <Circle className="w-1.5 h-1.5 fill-emerald-400 text-emerald-400" />
+                        <span className="text-xs text-emerald-400">Online</span>
+                      </div>
                       {activeConv?.campaignTitle && (
-                        <p className="text-xs text-emerald-700">Re: {activeConv.campaignTitle}</p>
+                        <p className="text-xs text-muted-foreground truncate">Re: {activeConv.campaignTitle}</p>
                       )}
                     </div>
                   </div>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"><MoreVertical className="w-4 h-4" /></Button>
                 </div>
 
-                <div className="flex-1 p-6 overflow-y-auto flex flex-col gap-4">
+                {/* Messages */}
+                <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-3">
                   {msgsLoading ? (
-                    <div className="flex justify-center items-center h-full">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+                    <div className="flex items-center justify-center h-full">
+                      <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                     </div>
                   ) : messages?.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                      <MessageSquare className="w-12 h-12 mb-4 opacity-20" />
-                      <p>Send a message to start the conversation</p>
+                      <MessageSquare className="w-10 h-10 mb-3 opacity-20" />
+                      <p className="text-sm">Send a message to start the conversation</p>
                     </div>
                   ) : (
-                    messages?.map((msg) => {
-                      const isMe = msg.senderId === 1; // Mock current user ID
-                      return (
-                        <div key={msg.id} className={`flex max-w-[80%] ${isMe ? 'self-end' : 'self-start'}`}>
-                          {!isMe && (
-                            <div className="w-8 h-8 rounded-full bg-emerald-200 flex-shrink-0 flex items-center justify-center text-emerald-800 font-bold mr-2 mt-auto">
-                              {msg.senderName.charAt(0)}
+                    <AnimatePresence>
+                      {messages?.map((msg, i) => {
+                        const isMe = msg.senderId === 1;
+                        return (
+                          <motion.div
+                            key={msg.id}
+                            initial={{ opacity: 0, y: 8, scale: 0.97 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            transition={{ delay: i * 0.03 }}
+                            className={`flex max-w-[75%] gap-2 ${isMe ? "self-end flex-row-reverse" : "self-start"}`}
+                          >
+                            {!isMe && (
+                              <div className="w-7 h-7 rounded-full bg-accent border border-border flex items-center justify-center text-xs font-bold text-foreground shrink-0 mt-auto">
+                                {msg.senderName.charAt(0)}
+                              </div>
+                            )}
+                            <div>
+                              <div className={`px-3.5 py-2.5 rounded-2xl text-sm ${
+                                isMe
+                                  ? "bg-primary text-primary-foreground rounded-br-sm"
+                                  : "bg-accent text-foreground rounded-bl-sm border border-border/60"
+                              }`}>
+                                {msg.content}
+                              </div>
+                              <p className={`text-[10px] mt-1 text-muted-foreground ${isMe ? "text-right" : "text-left"}`}>
+                                {format(new Date(msg.createdAt), "h:mm a")}
+                              </p>
                             </div>
-                          )}
-                          <div className={`px-4 py-2 rounded-2xl ${
-                            isMe 
-                              ? 'bg-emerald-600 text-white rounded-br-none' 
-                              : 'bg-white border border-emerald-100 text-foreground rounded-bl-none shadow-sm'
-                          }`}>
-                            <p className="text-sm">{msg.content}</p>
-                            <p className={`text-[10px] mt-1 text-right ${isMe ? 'text-emerald-100' : 'text-muted-foreground'}`}>
-                              {format(new Date(msg.createdAt), 'h:mm a')}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })
+                          </motion.div>
+                        );
+                      })}
+                    </AnimatePresence>
                   )}
                   <div ref={messagesEndRef} />
                 </div>
 
-                <div className="p-4 border-t border-emerald-100 bg-white/50">
-                  <form onSubmit={handleSend} className="flex gap-2">
-                    <Input 
-                      placeholder="Type your message..." 
-                      className="flex-1 border-emerald-200 focus-visible:ring-emerald-500 bg-white"
+                {/* Input */}
+                <div className="p-3 border-t border-border/60 bg-card/50 backdrop-blur-sm shrink-0">
+                  <form onSubmit={handleSend} className="flex gap-2 items-center">
+                    <Button variant="ghost" size="icon" type="button" className="h-9 w-9 text-muted-foreground shrink-0">
+                      <Paperclip className="w-4 h-4" />
+                    </Button>
+                    <Input
+                      placeholder="Type a message..."
+                      className="flex-1 h-9 text-sm bg-muted/50 border-border/60 focus-visible:ring-primary"
                       value={message}
-                      onChange={(e) => setMessage(e.target.value)}
+                      onChange={e => setMessage(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSend(e as unknown as React.FormEvent)}
                     />
-                    <Button type="submit" disabled={!message.trim() || sendMessage.isPending} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                    <Button
+                      type="submit"
+                      size="icon"
+                      className="h-9 w-9 shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground"
+                      disabled={!message.trim() || sendMessage.isPending}
+                    >
                       <Send className="w-4 h-4" />
                     </Button>
                   </form>
@@ -200,9 +244,9 @@ export default function Messages() {
               </>
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                <MessageSquare className="w-16 h-16 mb-4 opacity-20" />
-                <h3 className="text-xl font-medium text-foreground mb-2">Your Messages</h3>
-                <p>Select a conversation from the sidebar to view messages.</p>
+                <MessageSquare className="w-12 h-12 mb-4 opacity-20" />
+                <h3 className="text-base font-medium text-foreground mb-1">Your Messages</h3>
+                <p className="text-sm">Select a conversation to start chatting</p>
               </div>
             )}
           </div>
