@@ -3,7 +3,6 @@ import { db } from "@workspace/db";
 import { creatorsTable } from "@workspace/db";
 import { eq, ilike, gte, lte, and, desc } from "drizzle-orm";
 import {
-  ListCreatorsQueryParams,
   CreateCreatorBody,
   GetCreatorParams,
   GetTopCreatorsQueryParams,
@@ -11,22 +10,30 @@ import {
 
 const router = Router();
 
+function computeAiScore(engagementRate: number, followers: number, rating: number | null): number {
+  const engagementPoints = Math.min(engagementRate * 4, 40);
+  const followerPoints = Math.min((followers / 100000) * 3, 30);
+  const ratingPoints = Math.min((rating ?? 0) * 6, 30);
+  return Math.min(99, Math.round(engagementPoints + followerPoints + ratingPoints));
+}
+
 router.get("/creators", async (req, res): Promise<void> => {
-  const query = ListCreatorsQueryParams.safeParse(req.query);
-  if (!query.success) {
-    res.status(400).json({ error: "Invalid query parameters" });
-    return;
-  }
-  const { category, platform, minFollowers, maxFollowers, search } = query.data;
+  const q = req.query as {
+    category?: string;
+    platform?: string;
+    minFollowers?: string;
+    maxFollowers?: string;
+    search?: string;
+    location?: string;
+  };
 
   const conditions = [];
-  if (category) conditions.push(eq(creatorsTable.category, category));
-  if (platform) conditions.push(eq(creatorsTable.platform, platform));
-  if (minFollowers != null)
-    conditions.push(gte(creatorsTable.followers, minFollowers));
-  if (maxFollowers != null)
-    conditions.push(lte(creatorsTable.followers, maxFollowers));
-  if (search) conditions.push(ilike(creatorsTable.name, `%${search}%`));
+  if (q.category) conditions.push(eq(creatorsTable.category, q.category));
+  if (q.platform) conditions.push(eq(creatorsTable.platform, q.platform));
+  if (q.minFollowers) conditions.push(gte(creatorsTable.followers, Number(q.minFollowers)));
+  if (q.maxFollowers) conditions.push(lte(creatorsTable.followers, Number(q.maxFollowers)));
+  if (q.search) conditions.push(ilike(creatorsTable.name, `%${q.search}%`));
+  if (q.location && q.location !== "all") conditions.push(ilike(creatorsTable.location, `%${q.location}%`));
 
   const creators = await db
     .select()
@@ -34,7 +41,12 @@ router.get("/creators", async (req, res): Promise<void> => {
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(creatorsTable.followers));
 
-  res.json(creators);
+  const scored = creators.map((c) => ({
+    ...c,
+    aiScore: computeAiScore(c.engagementRate, c.followers, c.rating ?? null),
+  }));
+
+  res.json(scored);
 });
 
 router.post("/creators", async (req, res): Promise<void> => {
@@ -67,11 +79,8 @@ router.get("/creators/top", async (req, res): Promise<void> => {
 
   const scored = creators.map((c) => ({
     ...c,
-    aiScore:
-      Math.round(
-        (0.4 * c.engagementRate + 0.3 * (c.followers / 100000) * 10 + 0.3 * (c.rating ?? 0)) * 10
-      ) / 10,
-    matchReason: `High engagement rate of ${c.engagementRate}% with ${c.followers.toLocaleString()} followers in ${c.category}`,
+    aiScore: computeAiScore(c.engagementRate, c.followers, c.rating ?? null),
+    matchReason: `${c.engagementRate}% engagement · ${(c.followers / 1000).toFixed(0)}K followers · ${c.category}`,
   }));
 
   res.json(scored);
@@ -91,7 +100,10 @@ router.get("/creators/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Creator not found" });
     return;
   }
-  res.json(creator);
+  res.json({
+    ...creator,
+    aiScore: computeAiScore(creator.engagementRate, creator.followers, creator.rating ?? null),
+  });
 });
 
 router.put("/creators/:id", async (req, res): Promise<void> => {

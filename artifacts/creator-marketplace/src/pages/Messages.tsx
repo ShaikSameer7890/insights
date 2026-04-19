@@ -1,14 +1,24 @@
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useListConversations, useListMessages, useSendMessage } from "@workspace/api-client-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Send, MessageSquare, Circle, Paperclip, MoreVertical } from "lucide-react";
+import { Search, Send, MessageSquare, Circle, Paperclip, MoreVertical, CheckCheck } from "lucide-react";
 import { format, isToday, isYesterday } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
+
+interface OptimisticMessage {
+  id: number;
+  conversationId: number;
+  senderId: number;
+  senderName: string;
+  content: string;
+  createdAt: string;
+  pending?: boolean;
+}
 
 function formatMsgTime(dateStr: string) {
   const d = new Date(dateStr);
@@ -17,13 +27,19 @@ function formatMsgTime(dateStr: string) {
   return format(d, "MMM d");
 }
 
-export default function Messages() {
-  const [activeConvId, setActiveConvId] = useState<number | null>(null);
+export default function Messages({ initialConvId }: { initialConvId?: number }) {
+  const search = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const convFromUrl = search.get("conv") ? Number(search.get("conv")) : null;
+  const [activeConvId, setActiveConvId] = useState<number | null>(initialConvId ?? convFromUrl);
   const [message, setMessage] = useState("");
   const [searchQ, setSearchQ] = useState("");
+  const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const { data: conversations, isLoading: convsLoading, refetch: refetchConvs } = useListConversations();
+  const { data: conversations, isLoading: convsLoading, refetch: refetchConvs } = useListConversations({
+    query: { refetchInterval: 3000 }
+  });
 
   useEffect(() => {
     if (conversations?.length && !activeConvId) {
@@ -31,36 +47,75 @@ export default function Messages() {
     }
   }, [conversations, activeConvId]);
 
-  const { data: messages, isLoading: msgsLoading, refetch } = useListMessages(
+  const { data: serverMessages, isLoading: msgsLoading, refetch } = useListMessages(
     { conversationId: activeConvId! },
-    { query: { enabled: !!activeConvId } }
+    { query: { enabled: !!activeConvId, refetchInterval: 2000 } }
   );
 
   const sendMessage = useSendMessage();
 
+  // Merge server messages with optimistic ones (deduplicate by content+senderId)
+  const messages = useCallback(() => {
+    if (!serverMessages) return optimisticMessages.filter(m => m.conversationId === activeConvId);
+    const serverIds = new Set(serverMessages.map(m => `${m.senderId}-${m.content}-${m.createdAt.toString().slice(0, 16)}`));
+    const pending = optimisticMessages.filter(m =>
+      m.conversationId === activeConvId &&
+      !serverIds.has(`${m.senderId}-${m.content}-${m.createdAt.slice(0, 16)}`)
+    );
+    return [...serverMessages, ...pending] as OptimisticMessage[];
+  }, [serverMessages, optimisticMessages, activeConvId])();
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages.length]);
 
-  // Poll messages every 5 seconds
+  // Clear optimistic messages when server messages catch up
   useEffect(() => {
-    if (!activeConvId) return;
-    const t = setInterval(() => refetch(), 5000);
-    return () => clearInterval(t);
-  }, [activeConvId, refetch]);
+    if (!serverMessages || serverMessages.length === 0) return;
+    setOptimisticMessages(prev => prev.filter(m => {
+      const serverIds = new Set(serverMessages.map(s => `${s.senderId}-${s.content}`));
+      return !serverIds.has(`${m.senderId}-${m.content}`);
+    }));
+  }, [serverMessages]);
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim() || !activeConvId) return;
+
+    const content = message.trim();
+    setMessage("");
+
+    // Optimistic update — show message immediately
+    const optimistic: OptimisticMessage = {
+      id: Date.now(),
+      conversationId: activeConvId,
+      senderId: 1,
+      senderName: "Raj Kumar",
+      content,
+      createdAt: new Date().toISOString(),
+      pending: true,
+    };
+    setOptimisticMessages(prev => [...prev, optimistic]);
+
     sendMessage.mutate(
-      { data: { conversationId: activeConvId, senderId: 1, content: message } },
-      { onSuccess: () => { setMessage(""); refetch(); refetchConvs(); } }
+      { data: { conversationId: activeConvId, senderId: 1, content } },
+      {
+        onSuccess: () => {
+          refetch();
+          refetchConvs();
+        },
+        onError: () => {
+          setOptimisticMessages(prev => prev.filter(m => m.id !== optimistic.id));
+          setMessage(content);
+        }
+      }
     );
   };
 
   const filteredConvs = conversations?.filter(c =>
-    !searchQ || c.participantNames.some(n => n.toLowerCase().includes(searchQ.toLowerCase()))
-    || c.campaignTitle?.toLowerCase().includes(searchQ.toLowerCase())
+    !searchQ ||
+    c.participantNames.some(n => n.toLowerCase().includes(searchQ.toLowerCase())) ||
+    c.campaignTitle?.toLowerCase().includes(searchQ.toLowerCase())
   );
 
   const activeConv = conversations?.find(c => c.id === activeConvId);
@@ -70,7 +125,7 @@ export default function Messages() {
       <div className="flex flex-col h-[calc(100vh-7rem)]">
         <div className="mb-4 shrink-0">
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Messages</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Direct communication with creators and brands.</p>
+          <p className="text-sm text-muted-foreground mt-0.5">Real-time communication with creators and brands.</p>
         </div>
 
         <Card className="flex-1 flex overflow-hidden bg-card border-border/60 min-h-0">
@@ -105,20 +160,25 @@ export default function Messages() {
                 <div className="p-8 text-center text-muted-foreground">
                   <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-30" />
                   <p className="text-sm">No conversations yet</p>
+                  <p className="text-xs mt-1 opacity-60">Hire a creator to start chatting</p>
                 </div>
               ) : (
                 filteredConvs?.map(conv => {
-                  const other = conv.participantNames[1] || conv.participantNames[0] || "Unknown";
+                  const other = conv.participantNames[1] || conv.participantNames[0] || "Creator";
+                  const isActive = activeConvId === conv.id;
                   return (
                     <button
                       key={conv.id}
                       onClick={() => setActiveConvId(conv.id)}
                       className={`w-full text-left p-3 border-b border-border/40 transition-colors hover:bg-accent/60 flex items-start gap-3
-                        ${activeConvId === conv.id ? "bg-accent/80 border-l-2 border-l-primary" : ""}
+                        ${isActive ? "bg-accent/80 border-l-2 border-l-primary" : ""}
                       `}
                     >
-                      <div className="w-9 h-9 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary text-sm font-bold shrink-0">
-                        {other.charAt(0)}
+                      <div className="relative shrink-0">
+                        <div className="w-9 h-9 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary text-sm font-bold">
+                          {other.charAt(0)}
+                        </div>
+                        <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-card" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-baseline mb-0.5">
@@ -153,8 +213,11 @@ export default function Messages() {
                 {/* Chat header */}
                 <div className="h-14 border-b border-border/60 flex items-center px-4 bg-card/50 backdrop-blur-sm shrink-0">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary text-xs font-bold">
-                      {(activeConv?.participantNames[1] || "C").charAt(0)}
+                    <div className="relative">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary text-xs font-bold">
+                        {(activeConv?.participantNames[1] || "C").charAt(0)}
+                      </div>
+                      <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-card" />
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -172,25 +235,26 @@ export default function Messages() {
 
                 {/* Messages */}
                 <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-3">
-                  {msgsLoading ? (
+                  {msgsLoading && messages.length === 0 ? (
                     <div className="flex items-center justify-center h-full">
                       <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                     </div>
-                  ) : messages?.length === 0 ? (
+                  ) : messages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                       <MessageSquare className="w-10 h-10 mb-3 opacity-20" />
                       <p className="text-sm">Send a message to start the conversation</p>
                     </div>
                   ) : (
-                    <AnimatePresence>
-                      {messages?.map((msg, i) => {
+                    <AnimatePresence initial={false}>
+                      {messages.map((msg) => {
                         const isMe = msg.senderId === 1;
                         return (
                           <motion.div
                             key={msg.id}
                             initial={{ opacity: 0, y: 8, scale: 0.97 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
-                            transition={{ delay: i * 0.03 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.15 }}
                             className={`flex max-w-[75%] gap-2 ${isMe ? "self-end flex-row-reverse" : "self-start"}`}
                           >
                             {!isMe && (
@@ -201,14 +265,22 @@ export default function Messages() {
                             <div>
                               <div className={`px-3.5 py-2.5 rounded-2xl text-sm ${
                                 isMe
-                                  ? "bg-primary text-primary-foreground rounded-br-sm"
+                                  ? `bg-primary text-primary-foreground rounded-br-sm ${(msg as OptimisticMessage).pending ? "opacity-70" : ""}`
                                   : "bg-accent text-foreground rounded-bl-sm border border-border/60"
                               }`}>
                                 {msg.content}
                               </div>
-                              <p className={`text-[10px] mt-1 text-muted-foreground ${isMe ? "text-right" : "text-left"}`}>
-                                {format(new Date(msg.createdAt), "h:mm a")}
-                              </p>
+                              <div className={`flex items-center gap-1 mt-1 ${isMe ? "justify-end" : "justify-start"}`}>
+                                <p className="text-[10px] text-muted-foreground">
+                                  {format(new Date(msg.createdAt), "h:mm a")}
+                                </p>
+                                {isMe && !((msg as OptimisticMessage).pending) && (
+                                  <CheckCheck className="w-3 h-3 text-primary opacity-70" />
+                                )}
+                                {isMe && (msg as OptimisticMessage).pending && (
+                                  <div className="w-2.5 h-2.5 border border-muted-foreground border-t-transparent rounded-full animate-spin opacity-50" />
+                                )}
+                              </div>
                             </div>
                           </motion.div>
                         );
@@ -225,6 +297,7 @@ export default function Messages() {
                       <Paperclip className="w-4 h-4" />
                     </Button>
                     <Input
+                      ref={inputRef}
                       placeholder="Type a message..."
                       className="flex-1 h-9 text-sm bg-muted/50 border-border/60 focus-visible:ring-primary"
                       value={message}
@@ -234,8 +307,8 @@ export default function Messages() {
                     <Button
                       type="submit"
                       size="icon"
-                      className="h-9 w-9 shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground"
-                      disabled={!message.trim() || sendMessage.isPending}
+                      className="h-9 w-9 shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-40"
+                      disabled={!message.trim()}
                     >
                       <Send className="w-4 h-4" />
                     </Button>
@@ -246,7 +319,7 @@ export default function Messages() {
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                 <MessageSquare className="w-12 h-12 mb-4 opacity-20" />
                 <h3 className="text-base font-medium text-foreground mb-1">Your Messages</h3>
-                <p className="text-sm">Select a conversation to start chatting</p>
+                <p className="text-sm">Select a conversation or hire a creator to chat</p>
               </div>
             )}
           </div>
